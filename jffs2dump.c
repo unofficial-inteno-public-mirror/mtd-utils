@@ -634,108 +634,108 @@ void do_endianconvert (void)
 				break;
 
 			case JFFS2_NODETYPE_SUMMARY : {
-											  struct jffs2_sum_marker *sm_ptr;
-											  int i,sum_len;
-											  int counter = 0;
+				struct jffs2_sum_marker *sm_ptr;
+				int i,sum_len;
+				int counter = 0;
 
-											  newnode.s.magic = cnv_e16 (node->s.magic);
-											  newnode.s.nodetype = cnv_e16 (node->s.nodetype);
-											  newnode.s.totlen = cnv_e32 (node->s.totlen);
-											  newnode.s.hdr_crc = cpu_to_e32 (mtd_crc32 (0, &newnode, sizeof (struct jffs2_unknown_node) - 4));
-											  newnode.s.sum_num = cnv_e32 (node->s.sum_num);
-											  newnode.s.cln_mkr = cnv_e32 (node->s.cln_mkr);
-											  newnode.s.padded = cnv_e32 (node->s.padded);
+				newnode.s.magic = cnv_e16 (node->s.magic);
+				newnode.s.nodetype = cnv_e16 (node->s.nodetype);
+				newnode.s.totlen = cnv_e32 (node->s.totlen);
+				newnode.s.hdr_crc = cpu_to_e32 (mtd_crc32 (0, &newnode, sizeof (struct jffs2_unknown_node) - 4));
+				newnode.s.sum_num = cnv_e32 (node->s.sum_num);
+				newnode.s.cln_mkr = cnv_e32 (node->s.cln_mkr);
+				newnode.s.padded = cnv_e32 (node->s.padded);
 
-											  newnode.s.node_crc = cpu_to_e32 (mtd_crc32 (0, &newnode, sizeof (struct jffs2_raw_summary) - 8));
+				newnode.s.node_crc = cpu_to_e32 (mtd_crc32 (0, &newnode, sizeof (struct jffs2_raw_summary) - 8));
 
-											  // summary header
-											  p += sizeof (struct jffs2_raw_summary);
+				// summary header
+				p += sizeof (struct jffs2_raw_summary);
 
-											  // summary data
-											  sum_len = je32_to_cpu (node->s.totlen) - sizeof (struct jffs2_raw_summary) - sizeof (struct jffs2_sum_marker);
+				// summary data
+				sum_len = je32_to_cpu (node->s.totlen) - sizeof (struct jffs2_raw_summary) - sizeof (struct jffs2_sum_marker);
 
-											  for (i=0; i<je32_to_cpu (node->s.sum_num); i++) {
-												  union jffs2_sum_flash *fl_ptr;
+				for (i=0; i<je32_to_cpu (node->s.sum_num); i++) {
+					union jffs2_sum_flash *fl_ptr;
 
-												  fl_ptr = (union jffs2_sum_flash *) p;
+					fl_ptr = (union jffs2_sum_flash *) p;
 
-												  switch (je16_to_cpu (fl_ptr->u.nodetype)) {
-													  case JFFS2_NODETYPE_INODE:
+					switch (je16_to_cpu (fl_ptr->u.nodetype)) {
+						case JFFS2_NODETYPE_INODE:
 
-														  fl_ptr->i.nodetype = cnv_e16 (fl_ptr->i.nodetype);
-														  fl_ptr->i.inode = cnv_e32 (fl_ptr->i.inode);
-														  fl_ptr->i.version = cnv_e32 (fl_ptr->i.version);
-														  fl_ptr->i.offset = cnv_e32 (fl_ptr->i.offset);
-														  fl_ptr->i.totlen = cnv_e32 (fl_ptr->i.totlen);
-														  p += sizeof (struct jffs2_sum_inode_flash);
-														  counter += sizeof (struct jffs2_sum_inode_flash);
-														  break;
+							fl_ptr->i.nodetype = cnv_e16 (fl_ptr->i.nodetype);
+							fl_ptr->i.inode = cnv_e32 (fl_ptr->i.inode);
+							fl_ptr->i.version = cnv_e32 (fl_ptr->i.version);
+							fl_ptr->i.offset = cnv_e32 (fl_ptr->i.offset);
+							fl_ptr->i.totlen = cnv_e32 (fl_ptr->i.totlen);
+							p += sizeof (struct jffs2_sum_inode_flash);
+							counter += sizeof (struct jffs2_sum_inode_flash);
+							break;
 
-													  case JFFS2_NODETYPE_DIRENT:
-														  fl_ptr->d.nodetype = cnv_e16 (fl_ptr->d.nodetype);
-														  fl_ptr->d.totlen = cnv_e32 (fl_ptr->d.totlen);
-														  fl_ptr->d.offset = cnv_e32 (fl_ptr->d.offset);
-														  fl_ptr->d.pino = cnv_e32 (fl_ptr->d.pino);
-														  fl_ptr->d.version = cnv_e32 (fl_ptr->d.version);
-														  fl_ptr->d.ino = cnv_e32 (fl_ptr->d.ino);
-														  p += sizeof (struct jffs2_sum_dirent_flash) + fl_ptr->d.nsize;
-														  counter += sizeof (struct jffs2_sum_dirent_flash) + fl_ptr->d.nsize;
-														  break;
+						case JFFS2_NODETYPE_DIRENT:
+							fl_ptr->d.nodetype = cnv_e16 (fl_ptr->d.nodetype);
+							fl_ptr->d.totlen = cnv_e32 (fl_ptr->d.totlen);
+							fl_ptr->d.offset = cnv_e32 (fl_ptr->d.offset);
+							fl_ptr->d.pino = cnv_e32 (fl_ptr->d.pino);
+							fl_ptr->d.version = cnv_e32 (fl_ptr->d.version);
+							fl_ptr->d.ino = cnv_e32 (fl_ptr->d.ino);
+							p += sizeof (struct jffs2_sum_dirent_flash) + fl_ptr->d.nsize;
+							counter += sizeof (struct jffs2_sum_dirent_flash) + fl_ptr->d.nsize;
+							break;
 
-													  case JFFS2_NODETYPE_XATTR:
-														  fl_ptr->x.nodetype = cnv_e16 (fl_ptr->x.nodetype);
-														  fl_ptr->x.xid = cnv_e32 (fl_ptr->x.xid);
-														  fl_ptr->x.version = cnv_e32 (fl_ptr->x.version);
-														  fl_ptr->x.offset = cnv_e32 (fl_ptr->x.offset);
-														  fl_ptr->x.totlen = cnv_e32 (fl_ptr->x.totlen);
-														  p += sizeof (struct jffs2_sum_xattr_flash);
-														  counter += sizeof (struct jffs2_sum_xattr_flash);
-														  break;
+						case JFFS2_NODETYPE_XATTR:
+							fl_ptr->x.nodetype = cnv_e16 (fl_ptr->x.nodetype);
+							fl_ptr->x.xid = cnv_e32 (fl_ptr->x.xid);
+							fl_ptr->x.version = cnv_e32 (fl_ptr->x.version);
+							fl_ptr->x.offset = cnv_e32 (fl_ptr->x.offset);
+							fl_ptr->x.totlen = cnv_e32 (fl_ptr->x.totlen);
+							p += sizeof (struct jffs2_sum_xattr_flash);
+							counter += sizeof (struct jffs2_sum_xattr_flash);
+							break;
 
-													  case JFFS2_NODETYPE_XREF:
-														  fl_ptr->r.nodetype = cnv_e16 (fl_ptr->r.nodetype);
-														  fl_ptr->r.offset = cnv_e32 (fl_ptr->r.offset);
-														  p += sizeof (struct jffs2_sum_xref_flash);
-														  counter += sizeof (struct jffs2_sum_xref_flash);
-														  break;
+						case JFFS2_NODETYPE_XREF:
+							fl_ptr->r.nodetype = cnv_e16 (fl_ptr->r.nodetype);
+							fl_ptr->r.offset = cnv_e32 (fl_ptr->r.offset);
+							p += sizeof (struct jffs2_sum_xref_flash);
+							counter += sizeof (struct jffs2_sum_xref_flash);
+							break;
 
-													  default :
-														  printf("Unknown node in summary information!!! nodetype(%x)\n", je16_to_cpu (fl_ptr->u.nodetype));
-														  exit(EXIT_FAILURE);
-														  break;
-												  }
+						default :
+							printf("Unknown node in summary information!!! nodetype(%x)\n", je16_to_cpu (fl_ptr->u.nodetype));
+							exit(EXIT_FAILURE);
+							break;
+					}
 
-											  }
+				}
 
-											  //pad
-											  p += sum_len - counter;
+				//pad
+				p += sum_len - counter;
 
-											  // summary marker
-											  sm_ptr = (struct jffs2_sum_marker *) p;
-											  sm_ptr->offset = cnv_e32 (sm_ptr->offset);
-											  sm_ptr->magic = cnv_e32 (sm_ptr->magic);
-											  p += sizeof (struct jffs2_sum_marker);
+				// summary marker
+				sm_ptr = (struct jffs2_sum_marker *) p;
+				sm_ptr->offset = cnv_e32 (sm_ptr->offset);
+				sm_ptr->magic = cnv_e32 (sm_ptr->magic);
+				p += sizeof (struct jffs2_sum_marker);
 
-											  // generate new crc on sum data
-											  newnode.s.sum_crc = cpu_to_e32 ( mtd_crc32(0, ((char *) node) + sizeof (struct jffs2_raw_summary),
-														  je32_to_cpu (node->s.totlen) - sizeof (struct jffs2_raw_summary)));
+				// generate new crc on sum data
+				newnode.s.sum_crc = cpu_to_e32 ( mtd_crc32(0, ((char *) node) + sizeof (struct jffs2_raw_summary),
+							  je32_to_cpu (node->s.totlen) - sizeof (struct jffs2_raw_summary)));
 
-											  // write out new node header
-											  write(fd, &newnode, sizeof (struct jffs2_raw_summary));
-											  // write out new summary data
-											  write(fd, &node->s.sum, sum_len + sizeof (struct jffs2_sum_marker));
+				// write out new node header
+				write(fd, &newnode, sizeof (struct jffs2_raw_summary));
+				// write out new summary data
+				write(fd, &node->s.sum, sum_len + sizeof (struct jffs2_sum_marker));
 
-											  break;
-										  }
+				break;
+			}
 
 			case 0xffff:
-										  write (fd, p, 4);
-										  p += 4;
-										  break;
+				write (fd, p, 4);
+				p += 4;
+				break;
 
 			default:
-										  printf ("Unknown node type: 0x%04x at 0x%08zx, totlen 0x%08x\n", je16_to_cpu (node->u.nodetype), p - data, je32_to_cpu (node->u.totlen));
-										  p += PAD(je32_to_cpu (node->u.totlen));
+				printf ("Unknown node type: 0x%04x at 0x%08zx, totlen 0x%08x\n", je16_to_cpu (node->u.nodetype), p - data, je32_to_cpu (node->u.totlen));
+				p += PAD(je32_to_cpu (node->u.totlen));
 
 		}
 	}
