@@ -328,151 +328,150 @@ void do_dumpcontent (void)
 
 			case JFFS2_NODETYPE_SUMMARY: {
 
-											 int i;
-											 struct jffs2_sum_marker * sm;
+				int i;
+				struct jffs2_sum_marker * sm;
 
-											 printf("%8s Inode Sum  node at 0x%08zx, totlen 0x%08x, sum_num  %5d, cleanmarker size %5d\n",
-													 obsolete ? "Obsolete" : "",
-													 p - data,
-													 je32_to_cpu (node->s.totlen),
-													 je32_to_cpu (node->s.sum_num),
-													 je32_to_cpu (node->s.cln_mkr));
+				printf("%8s Inode Sum  node at 0x%08zx, totlen 0x%08x, sum_num  %5d, cleanmarker size %5d\n",
+						obsolete ? "Obsolete" : "",
+						p - data,
+						je32_to_cpu (node->s.totlen),
+						je32_to_cpu (node->s.sum_num),
+						je32_to_cpu (node->s.cln_mkr));
 
-											 crc = mtd_crc32 (0, node, sizeof (struct jffs2_raw_summary) - 8);
-											 if (crc != je32_to_cpu (node->s.node_crc)) {
-												 printf ("Wrong node_crc at  0x%08zx, 0x%08x instead of 0x%08x\n", p - data, je32_to_cpu (node->s.node_crc), crc);
-												 p += PAD(je32_to_cpu (node->s.totlen));
-												 dirty += PAD(je32_to_cpu (node->s.totlen));;
-												 continue;
-											 }
+				crc = mtd_crc32 (0, node, sizeof (struct jffs2_raw_summary) - 8);
+				if (crc != je32_to_cpu (node->s.node_crc)) {
+					printf ("Wrong node_crc at  0x%08zx, 0x%08x instead of 0x%08x\n", p - data, je32_to_cpu (node->s.node_crc), crc);
+					p += PAD(je32_to_cpu (node->s.totlen));
+					dirty += PAD(je32_to_cpu (node->s.totlen));;
+					continue;
+				}
 
-											 crc = mtd_crc32(0, p + sizeof (struct jffs2_raw_summary),  je32_to_cpu (node->s.totlen) - sizeof(struct jffs2_raw_summary));
-											 if (crc != je32_to_cpu(node->s.sum_crc)) {
-												 printf ("Wrong data_crc at  0x%08zx, 0x%08x instead of 0x%08x\n", p - data, je32_to_cpu (node->s.sum_crc), crc);
-												 p += PAD(je32_to_cpu (node->s.totlen));
-												 dirty += PAD(je32_to_cpu (node->s.totlen));;
-												 continue;
-											 }
+				crc = mtd_crc32(0, p + sizeof (struct jffs2_raw_summary),  je32_to_cpu (node->s.totlen) - sizeof(struct jffs2_raw_summary));
+				if (crc != je32_to_cpu(node->s.sum_crc)) {
+					printf ("Wrong data_crc at  0x%08zx, 0x%08x instead of 0x%08x\n", p - data, je32_to_cpu (node->s.sum_crc), crc);
+					p += PAD(je32_to_cpu (node->s.totlen));
+					dirty += PAD(je32_to_cpu (node->s.totlen));;
+					continue;
+				}
 
-											 if (verbose) {
-												 void *sp;
-												 sp = (p + sizeof(struct jffs2_raw_summary));
+				if (verbose) {
+					void *sp;
+					sp = (p + sizeof(struct jffs2_raw_summary));
 
-												 for(i=0; i<je32_to_cpu(node->s.sum_num); i++) {
+					for(i=0; i<je32_to_cpu(node->s.sum_num); i++) {
 
-													 switch(je16_to_cpu(((struct jffs2_sum_unknown_flash *)sp)->nodetype)) {
-														 case JFFS2_NODETYPE_INODE : {
+						switch(je16_to_cpu(((struct jffs2_sum_unknown_flash *)sp)->nodetype)) {
 
-																						 struct jffs2_sum_inode_flash *spi;
-																						 spi = sp;
+							case JFFS2_NODETYPE_INODE : {
+								struct jffs2_sum_inode_flash *spi;
+								spi = sp;
 
-																						 printf ("%14s #ino  %5d,  version %5d, offset 0x%08x, totlen 0x%08x\n",
-																								 "",
-																								 je32_to_cpu (spi->inode),
-																								 je32_to_cpu (spi->version),
-																								 je32_to_cpu (spi->offset),
-																								 je32_to_cpu (spi->totlen));
+								printf ("%14s #ino  %5d,  version %5d, offset 0x%08x, totlen 0x%08x\n",
+										"",
+										je32_to_cpu (spi->inode),
+										je32_to_cpu (spi->version),
+										je32_to_cpu (spi->offset),
+										je32_to_cpu (spi->totlen));
 
-																						 sp += JFFS2_SUMMARY_INODE_SIZE;
-																						 break;
-																					 }
+								sp += JFFS2_SUMMARY_INODE_SIZE;
+								break;
+							}
 
-														 case JFFS2_NODETYPE_DIRENT : {
+							case JFFS2_NODETYPE_DIRENT : {
+								char name[255];
+								struct jffs2_sum_dirent_flash *spd;
+								spd = sp;
 
-																						  char name[255];
-																						  struct jffs2_sum_dirent_flash *spd;
-																						  spd = sp;
+								memcpy(name,spd->name,spd->nsize);
+								name [spd->nsize] = 0x0;
 
-																						  memcpy(name,spd->name,spd->nsize);
-																						  name [spd->nsize] = 0x0;
+								printf ("%14s dirent offset 0x%08x, totlen 0x%08x, #pino  %5d,  version %5d, #ino  %8d, nsize %8d, name %s \n",
+										"",
+										je32_to_cpu (spd->offset),
+										je32_to_cpu (spd->totlen),
+										je32_to_cpu (spd->pino),
+										je32_to_cpu (spd->version),
+										je32_to_cpu (spd->ino),
+										spd->nsize,
+										name);
 
-																						  printf ("%14s dirent offset 0x%08x, totlen 0x%08x, #pino  %5d,  version %5d, #ino  %8d, nsize %8d, name %s \n",
-																								  "",
-																								  je32_to_cpu (spd->offset),
-																								  je32_to_cpu (spd->totlen),
-																								  je32_to_cpu (spd->pino),
-																								  je32_to_cpu (spd->version),
-																								  je32_to_cpu (spd->ino),
-																								  spd->nsize,
-																								  name);
+								sp += JFFS2_SUMMARY_DIRENT_SIZE(spd->nsize);
+								break;
+							}
 
-																						  sp += JFFS2_SUMMARY_DIRENT_SIZE(spd->nsize);
-																						  break;
-																					  }
+							case JFFS2_NODETYPE_XATTR : {
+								struct jffs2_sum_xattr_flash *spx;
+								spx = sp;
+								printf ("%14s Xattr  offset 0x%08x, totlen 0x%08x, version %5d, #xid %8d\n",
+										"",
+										je32_to_cpu (spx->offset),
+										je32_to_cpu (spx->totlen),
+										je32_to_cpu (spx->version),
+										je32_to_cpu (spx->xid));
+								sp += JFFS2_SUMMARY_XATTR_SIZE;
+								break;
+							}
 
-														 case JFFS2_NODETYPE_XATTR : {
-																						  struct jffs2_sum_xattr_flash *spx;
-																						  spx = sp;
-																						  printf ("%14s Xattr  offset 0x%08x, totlen 0x%08x, version %5d, #xid %8d\n",
-																								  "",
-																								  je32_to_cpu (spx->offset),
-																								  je32_to_cpu (spx->totlen),
-																								  je32_to_cpu (spx->version),
-																								  je32_to_cpu (spx->xid));
-																						  sp += JFFS2_SUMMARY_XATTR_SIZE;
-																						  break;
-																					  }
+							case JFFS2_NODETYPE_XREF : {
+								struct jffs2_sum_xref_flash *spr;
+								spr = sp;
+								printf ("%14s Xref   offset 0x%08x\n",
+										"",
+										je32_to_cpu (spr->offset));
+								sp += JFFS2_SUMMARY_XREF_SIZE;
+								break;
+							}
 
-														 case JFFS2_NODETYPE_XREF : {
-																						  struct jffs2_sum_xref_flash *spr;
-																						  spr = sp;
-																						  printf ("%14s Xref   offset 0x%08x\n",
-																								  "",
-																								  je32_to_cpu (spr->offset));
-																						  sp += JFFS2_SUMMARY_XREF_SIZE;
-																						  break;
-																					  }
+							default :
+								printf("Unknown summary node!\n");
+								break;
+						}
+					}
 
-														 default :
-																					  printf("Unknown summary node!\n");
-																					  break;
-													 }
-												 }
+					sm = (struct jffs2_sum_marker *) ((char *)p + je32_to_cpu(node->s.totlen) - sizeof(struct jffs2_sum_marker));
 
-												 sm = (struct jffs2_sum_marker *) ((char *)p + je32_to_cpu(node->s.totlen) - sizeof(struct jffs2_sum_marker));
+					printf("%14s Sum Node Offset  0x%08x, Magic 0x%08x, Padded size 0x%08x\n",
+							"",
+							je32_to_cpu(sm->offset),
+							je32_to_cpu(sm->magic),
+							je32_to_cpu(node->s.padded));
+				}
 
-												 printf("%14s Sum Node Offset  0x%08x, Magic 0x%08x, Padded size 0x%08x\n",
-														 "",
-														 je32_to_cpu(sm->offset),
-														 je32_to_cpu(sm->magic),
-														 je32_to_cpu(node->s.padded));
-											 }
-
-											 p += PAD(je32_to_cpu (node->s.totlen));
-											 break;
-										 }
+				p += PAD(je32_to_cpu (node->s.totlen));
+				break;
+			}
 
 			case JFFS2_NODETYPE_CLEANMARKER:
-										 if (verbose) {
-											 printf ("%8s Cleanmarker     at 0x%08zx, totlen 0x%08x\n",
-													 obsolete ? "Obsolete" : "",
-													 p - data, je32_to_cpu (node->u.totlen));
-										 }
-										 p += PAD(je32_to_cpu (node->u.totlen));
-										 break;
+				if (verbose) {
+					printf ("%8s Cleanmarker     at 0x%08zx, totlen 0x%08x\n",
+					obsolete ? "Obsolete" : "",
+					p - data, je32_to_cpu (node->u.totlen));
+				}
+				p += PAD(je32_to_cpu (node->u.totlen));
+				break;
 
 			case JFFS2_NODETYPE_PADDING:
-										 if (verbose) {
-											 printf ("%8s Padding    node at 0x%08zx, totlen 0x%08x\n",
-													 obsolete ? "Obsolete" : "",
-													 p - data, je32_to_cpu (node->u.totlen));
-										 }
-										 p += PAD(je32_to_cpu (node->u.totlen));
-										 break;
+				if (verbose) {
+					printf ("%8s Padding    node at 0x%08zx, totlen 0x%08x\n",
+							obsolete ? "Obsolete" : "",
+							p - data, je32_to_cpu (node->u.totlen));
+				}
+				p += PAD(je32_to_cpu (node->u.totlen));
+				break;
 
 			case 0xffff:
-										 p += 4;
-										 empty += 4;
-										 break;
+				p += 4;
+				empty += 4;
+				break;
 
 			default:
-										 if (verbose) {
-											 printf ("%8s Unknown    node at 0x%08zx, totlen 0x%08x\n",
-													 obsolete ? "Obsolete" : "",
-													 p - data, je32_to_cpu (node->u.totlen));
-										 }
-										 p += PAD(je32_to_cpu (node->u.totlen));
-										 dirty += PAD(je32_to_cpu (node->u.totlen));
+				if (verbose) {
+					printf ("%8s Unknown    node at 0x%08zx, totlen 0x%08x\n",
+							obsolete ? "Obsolete" : "",
+							p - data, je32_to_cpu (node->u.totlen));
+				}
+				p += PAD(je32_to_cpu (node->u.totlen));
+				dirty += PAD(je32_to_cpu (node->u.totlen));
 
 		}
 	}
