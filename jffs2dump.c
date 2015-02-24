@@ -491,6 +491,7 @@ void do_endianconvert (void)
 	int			fd, len;
 	jint32_t		mode;
 	uint32_t		crc;
+	int			hdr_crc_err;
 
 	fd = open (cnvfile, O_WRONLY | O_CREAT, 0644);
 	if (fd < 0) {
@@ -518,8 +519,10 @@ void do_endianconvert (void)
 		}
 
 		crc = mtd_crc32 (0, node, sizeof (struct jffs2_unknown_node) - 4);
+		hdr_crc_err = 0;
 		if (crc != je32_to_cpu (node->u.hdr_crc)) {
 			printf ("Wrong hdr_crc  at  0x%08zx, 0x%08x instead of 0x%08x\n", p - data, je32_to_cpu (node->u.hdr_crc), crc);
+			hdr_crc_err = 1;
 		}
 
 		switch(je16_to_cpu(node->u.nodetype)) {
@@ -529,7 +532,11 @@ void do_endianconvert (void)
 				newnode.i.magic = cnv_e16 (node->i.magic);
 				newnode.i.nodetype = cnv_e16 (node->i.nodetype);
 				newnode.i.totlen = cnv_e32 (node->i.totlen);
-				newnode.i.hdr_crc = cpu_to_e32 (mtd_crc32 (0, &newnode, sizeof (struct jffs2_unknown_node) - 4));
+				if (!hdr_crc_err)
+					newnode.i.hdr_crc = cpu_to_e32 (mtd_crc32 (0, &newnode, sizeof (struct jffs2_unknown_node) - 4));
+				else
+					newnode.i.hdr_crc = cnv_e32 (node->i.hdr_crc);
+
 				newnode.i.ino = cnv_e32 (node->i.ino);
 				newnode.i.version = cnv_e32 (node->i.version);
 				mode.v32 = node->i.mode.m;
@@ -553,19 +560,30 @@ void do_endianconvert (void)
 				} else
 					newnode.i.data_crc = cnv_e32 (node->i.data_crc);
 
-				newnode.i.node_crc = cpu_to_e32 (mtd_crc32 (0, &newnode, sizeof (struct jffs2_raw_inode) - 8));
+				crc = mtd_crc32 (0, node, sizeof (struct jffs2_raw_inode) - 8);
+				if (crc == je32_to_cpu (node->i.node_crc))
+					newnode.i.node_crc = cpu_to_e32 (mtd_crc32 (0, &newnode, sizeof (struct jffs2_raw_inode) - 8));
+				else
+					newnode.i.node_crc = cnv_e32 (node->i.node_crc);
 
 				write (fd, &newnode, sizeof (struct jffs2_raw_inode));
-				write (fd, p + sizeof (struct jffs2_raw_inode), PAD (je32_to_cpu (node->i.totlen) -  sizeof (struct jffs2_raw_inode)));
-
-				p += PAD(je32_to_cpu (node->i.totlen));
+				if (!hdr_crc_err) {
+					write (fd, p + sizeof (struct jffs2_raw_inode), PAD (je32_to_cpu (node->i.totlen) -  sizeof (struct jffs2_raw_inode)));
+					p += PAD(je32_to_cpu (node->i.totlen));
+				} else {
+					p += PAD(sizeof (struct jffs2_raw_inode));
+				}
 				break;
 
 			case JFFS2_NODETYPE_DIRENT:
 				newnode.d.magic = cnv_e16 (node->d.magic);
 				newnode.d.nodetype = cnv_e16 (node->d.nodetype);
 				newnode.d.totlen = cnv_e32 (node->d.totlen);
-				newnode.d.hdr_crc = cpu_to_e32 (mtd_crc32 (0, &newnode, sizeof (struct jffs2_unknown_node) - 4));
+				if (!hdr_crc_err)
+					newnode.d.hdr_crc = cpu_to_e32 (mtd_crc32 (0, &newnode, sizeof (struct jffs2_unknown_node) - 4));
+				else
+					newnode.d.hdr_crc = cnv_e32 (node->d.hdr_crc);
+
 				newnode.d.pino = cnv_e32 (node->d.pino);
 				newnode.d.version = cnv_e32 (node->d.version);
 				newnode.d.ino = cnv_e32 (node->d.ino);
@@ -574,22 +592,36 @@ void do_endianconvert (void)
 				newnode.d.type = node->d.type;
 				newnode.d.unused[0] = node->d.unused[0];
 				newnode.d.unused[1] = node->d.unused[1];
-				newnode.d.node_crc = cpu_to_e32 (mtd_crc32 (0, &newnode, sizeof (struct jffs2_raw_dirent) - 8));
+
+				crc = mtd_crc32 (0, node, sizeof (struct jffs2_raw_dirent) - 8);
+				if (crc == je32_to_cpu (node->d.node_crc))
+					newnode.d.node_crc = cpu_to_e32 (mtd_crc32 (0, &newnode, sizeof (struct jffs2_raw_dirent) - 8));
+				else
+					newnode.d.node_crc = cnv_e32 (node->d.node_crc);
+
 				if (recalccrc)
 					newnode.d.name_crc = cpu_to_e32 ( mtd_crc32(0, p + sizeof (struct jffs2_raw_dirent), node->d.nsize));
 				else
 					newnode.d.name_crc = cnv_e32 (node->d.name_crc);
 
 				write (fd, &newnode, sizeof (struct jffs2_raw_dirent));
-				write (fd, p + sizeof (struct jffs2_raw_dirent), PAD (je32_to_cpu (node->d.totlen) -  sizeof (struct jffs2_raw_dirent)));
-				p += PAD(je32_to_cpu (node->d.totlen));
+				if (!hdr_crc_err) {
+					write (fd, p + sizeof (struct jffs2_raw_dirent), PAD (je32_to_cpu (node->d.totlen) -  sizeof (struct jffs2_raw_dirent)));
+					p += PAD(je32_to_cpu (node->d.totlen));
+				} else {
+					p += PAD(sizeof (struct jffs2_raw_dirent));
+				}
 				break;
 
 			case JFFS2_NODETYPE_XATTR:
 				newnode.x.magic = cnv_e16 (node->x.magic);
 				newnode.x.nodetype = cnv_e16 (node->x.nodetype);
 				newnode.x.totlen = cnv_e32 (node->x.totlen);
-				newnode.x.hdr_crc = cpu_to_e32 (mtd_crc32 (0, &newnode, sizeof (struct jffs2_unknown_node) - 4));
+				if (!hdr_crc_err)
+					newnode.x.hdr_crc = cpu_to_e32 (mtd_crc32 (0, &newnode, sizeof (struct jffs2_unknown_node) - 4));
+				else
+					newnode.x.hdr_crc = cnv_e32 (node->x.hdr_crc);
+
 				newnode.x.xid = cnv_e32 (node->x.xid);
 				newnode.x.version = cnv_e32 (node->x.version);
 				newnode.x.xprefix = node->x.xprefix;
@@ -599,23 +631,46 @@ void do_endianconvert (void)
 					newnode.x.data_crc = cpu_to_e32 (mtd_crc32 (0, p + sizeof (struct jffs2_raw_xattr), node->x.name_len + je16_to_cpu (node->x.value_len) + 1));
 				else
 					newnode.x.data_crc = cnv_e32 (node->x.data_crc);
-				newnode.x.node_crc = cpu_to_e32 (mtd_crc32 (0, &newnode, sizeof (struct jffs2_raw_xattr) - sizeof (newnode.x.node_crc)));
+
+				crc = mtd_crc32 (0, node, sizeof (struct jffs2_raw_xattr) - 8);
+				if (crc == je32_to_cpu (node->x.node_crc))
+					newnode.x.node_crc = cpu_to_e32 (mtd_crc32 (0, &newnode, sizeof (struct jffs2_raw_xattr) - sizeof (newnode.x.node_crc)));
+				else
+					newnode.x.node_crc = cnv_e32 (node->x.node_crc);
 
 				write (fd, &newnode, sizeof (struct jffs2_raw_xattr));
-				write (fd, p + sizeof (struct jffs2_raw_xattr), PAD (je32_to_cpu (node->d.totlen) -  sizeof (struct jffs2_raw_xattr)));
-				p += PAD(je32_to_cpu (node->x.totlen));
+				if (!hdr_crc_err) {
+					write (fd, p + sizeof (struct jffs2_raw_xattr), PAD (je32_to_cpu (node->d.totlen) -  sizeof (struct jffs2_raw_xattr)));
+					p += PAD(je32_to_cpu (node->x.totlen));
+				} else {
+					p += PAD(sizeof (struct jffs2_raw_xattr));
+				}
 				break;
 
 			case JFFS2_NODETYPE_XREF:
 				newnode.r.magic = cnv_e16 (node->r.magic);
 				newnode.r.nodetype = cnv_e16 (node->r.nodetype);
 				newnode.r.totlen = cnv_e32 (node->r.totlen);
-				newnode.r.hdr_crc = cpu_to_e32 (mtd_crc32 (0, &newnode, sizeof (struct jffs2_unknown_node) - sizeof (newnode.r.hdr_crc)));
+				if (!hdr_crc_err)
+					newnode.r.hdr_crc = cpu_to_e32 (mtd_crc32 (0, &newnode, sizeof (struct jffs2_unknown_node) - sizeof (newnode.r.hdr_crc)));
+				else
+					newnode.r.hdr_crc = cnv_e32 (node->r.hdr_crc);
+
 				newnode.r.ino = cnv_e32 (node->r.ino);
 				newnode.r.xid = cnv_e32 (node->r.xid);
 				newnode.r.xseqno = cnv_e32 (node->r.xseqno);
-				newnode.r.node_crc = cpu_to_e32 (mtd_crc32 (0, &newnode, sizeof (struct jffs2_raw_xref) - sizeof (newnode.r.node_crc)));
-				p += PAD(je32_to_cpu (node->x.totlen));
+
+				crc = mtd_crc32 (0, node, sizeof (struct jffs2_raw_xref) - 4);
+				if (crc == je32_to_cpu (node->r.node_crc))
+					newnode.r.node_crc = cpu_to_e32 (mtd_crc32 (0, &newnode, sizeof (struct jffs2_raw_xref) - sizeof (newnode.r.node_crc)));
+				else
+					newnode.r.node_crc = cnv_e32 (node->r.node_crc);
+
+				write (fd, &newnode, sizeof (struct jffs2_raw_xref));
+				if (!hdr_crc_err)
+					p += PAD(je32_to_cpu (node->r.totlen));
+				else
+					p += PAD(sizeof (struct jffs2_raw_xref));
 				break;
 
 			case JFFS2_NODETYPE_CLEANMARKER:
@@ -623,14 +678,20 @@ void do_endianconvert (void)
 				newnode.u.magic = cnv_e16 (node->u.magic);
 				newnode.u.nodetype = cnv_e16 (node->u.nodetype);
 				newnode.u.totlen = cnv_e32 (node->u.totlen);
-				newnode.u.hdr_crc = cpu_to_e32 (mtd_crc32 (0, &newnode, sizeof (struct jffs2_unknown_node) - 4));
+				if (!hdr_crc_err)
+					newnode.u.hdr_crc = cpu_to_e32 (mtd_crc32 (0, &newnode, sizeof (struct jffs2_unknown_node) - 4));
+				else
+					newnode.u.hdr_crc = cnv_e32 (node->u.hdr_crc);
 
 				write (fd, &newnode, sizeof (struct jffs2_unknown_node));
 				len = PAD(je32_to_cpu (node->u.totlen) - sizeof (struct jffs2_unknown_node));
-				if (len > 0)
-					write (fd, p + sizeof (struct jffs2_unknown_node), len);
-
-				p += PAD(je32_to_cpu (node->u.totlen));
+				if (!hdr_crc_err) {
+					if (len > 0)
+						write (fd, p + sizeof (struct jffs2_unknown_node), len);
+					p += PAD(je32_to_cpu (node->u.totlen));
+				} else {
+					p += PAD(sizeof (struct jffs2_unknown_node));
+				}
 				break;
 
 			case JFFS2_NODETYPE_SUMMARY : {
@@ -641,15 +702,30 @@ void do_endianconvert (void)
 				newnode.s.magic = cnv_e16 (node->s.magic);
 				newnode.s.nodetype = cnv_e16 (node->s.nodetype);
 				newnode.s.totlen = cnv_e32 (node->s.totlen);
-				newnode.s.hdr_crc = cpu_to_e32 (mtd_crc32 (0, &newnode, sizeof (struct jffs2_unknown_node) - 4));
+				if (!hdr_crc_err)
+					newnode.s.hdr_crc = cpu_to_e32 (mtd_crc32 (0, &newnode, sizeof (struct jffs2_unknown_node) - 4));
+				else
+					newnode.s.hdr_crc = cnv_e32 (node->s.hdr_crc);
+
 				newnode.s.sum_num = cnv_e32 (node->s.sum_num);
 				newnode.s.cln_mkr = cnv_e32 (node->s.cln_mkr);
 				newnode.s.padded = cnv_e32 (node->s.padded);
 
-				newnode.s.node_crc = cpu_to_e32 (mtd_crc32 (0, &newnode, sizeof (struct jffs2_raw_summary) - 8));
+				crc = mtd_crc32 (0, node, sizeof (struct jffs2_raw_summary) - 8);
+				if (crc == je32_to_cpu (node->s.node_crc))
+					newnode.s.node_crc = cpu_to_e32 (mtd_crc32 (0, &newnode, sizeof (struct jffs2_raw_summary) - 8));
+				else
+					newnode.s.node_crc = cnv_e32 (node->s.node_crc);
+
+				newnode.s.sum_crc = cnv_e32 (node->s.sum_crc);  // Recalc later
 
 				// summary header
 				p += sizeof (struct jffs2_raw_summary);
+
+				if (hdr_crc_err) {
+					write(fd, &newnode, sizeof (struct jffs2_raw_summary));
+					break;
+				}
 
 				// summary data
 				sum_len = je32_to_cpu (node->s.totlen) - sizeof (struct jffs2_raw_summary) - sizeof (struct jffs2_sum_marker);
