@@ -232,11 +232,12 @@ void do_dumpcontent (void)
 		switch(je16_to_cpu(node->u.nodetype)) {
 
 			case JFFS2_NODETYPE_INODE:
-				printf ("%8s Inode      node at 0x%08zx, totlen 0x%08x, #ino  %5d, version %5d, isize %8d, csize %8d, dsize %8d, offset %8d\n",
+				printf ("%8s Inode      node at 0x%08zx, totlen 0x%08x, #ino  %5d, version %5d, isize %8d, csize %8d, dsize %8d, offset %8d, ctime %8d, mtime %8d\n",
 						obsolete ? "Obsolete" : "",
 						p - data, je32_to_cpu (node->i.totlen), je32_to_cpu (node->i.ino),
 						je32_to_cpu ( node->i.version), je32_to_cpu (node->i.isize),
-						je32_to_cpu (node->i.csize), je32_to_cpu (node->i.dsize), je32_to_cpu (node->i.offset));
+						je32_to_cpu (node->i.csize), je32_to_cpu (node->i.dsize), je32_to_cpu (node->i.offset),
+						je32_to_cpu (node->i.ctime), je32_to_cpu (node->i.mtime));
 
 				crc = mtd_crc32 (0, node, sizeof (struct jffs2_raw_inode) - 8);
 				if (crc != je32_to_cpu (node->i.node_crc)) {
@@ -260,11 +261,11 @@ void do_dumpcontent (void)
 			case JFFS2_NODETYPE_DIRENT:
 				memcpy (name, node->d.name, node->d.nsize);
 				name [node->d.nsize] = 0x0;
-				printf ("%8s Dirent     node at 0x%08zx, totlen 0x%08x, #pino %5d, version %5d, #ino  %8d, nsize %8d, name %s\n",
+				printf ("%8s Dirent     node at 0x%08zx, totlen 0x%08x, #pino %5d, version %5d, #ino  %8d, nsize %8d, mctime %8d, name %s\n",
 						obsolete ? "Obsolete" : "",
 						p - data, je32_to_cpu (node->d.totlen), je32_to_cpu (node->d.pino),
 						je32_to_cpu ( node->d.version), je32_to_cpu (node->d.ino),
-						node->d.nsize, name);
+						node->d.nsize, je32_to_cpu (node->d.mctime), name);
 
 				crc = mtd_crc32 (0, node, sizeof (struct jffs2_raw_dirent) - 8);
 				if (crc != je32_to_cpu (node->d.node_crc)) {
