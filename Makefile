@@ -27,8 +27,8 @@ MTD_BINS = \
 	serve_image recv_image \
 	sumtool jffs2reader
 UBI_BINS = \
-	ubiupdatevol ubimkvol ubirmvol ubicrc32 ubinfo ubiattach \
-	ubidetach ubinize ubiformat ubirename mtdinfo ubirsvol ubiblock
+	ubiupdatevol ubimkvol ubirmvol ubicrc32 ubinfo ubiattach ubidetach \
+	ubinize deubinize ubiformat ubirename mtdinfo ubirsvol ubiblock
 
 BINS = $(MTD_BINS)
 BINS += mkfs.ubifs/mkfs.ubifs
