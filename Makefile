@@ -21,6 +21,7 @@ MTD_BINS = \
 	ftl_check mkfs.jffs2 flash_lock flash_unlock \
 	flash_otp_info flash_otp_dump flash_otp_lock flash_otp_write \
 	mtd_debug flashcp nandwrite nandtest \
+	imagewrite \
 	jffs2dump \
 	nftldump nftl_format docfdisk \
 	rfddump rfdformat \
