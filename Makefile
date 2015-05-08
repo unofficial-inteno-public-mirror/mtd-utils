@@ -12,6 +12,11 @@ else
   LZOLDLIBS = -llzo2
 endif
 
+ifeq ($(shell uname -o),Cygwin)
+CPPFLAGS += -I./include/cygwin
+endif
+
+ifneq ($(shell uname -o),Cygwin)
 SUBDIRS = lib ubi-utils mkfs.ubifs
 TESTS = tests
 
@@ -23,6 +28,10 @@ TARGETS = ftl_format flash_erase nanddump doc_loadbios \
 	rfddump rfdformat \
 	serve_image recv_image \
 	sumtool #jffs2reader
+else
+SUBDIRS =
+TARGETS = mkfs.jffs2
+endif
 SCRIPTS = flash_eraseall
 
 SYMLINKS =

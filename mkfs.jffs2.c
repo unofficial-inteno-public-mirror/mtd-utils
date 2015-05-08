@@ -77,6 +77,14 @@
 #include "rbtree.h"
 #include "common.h"
 
+#ifdef __CYGWIN__
+#include <cygwin/ioctl.h>
+#include <cygwin/endian.h>
+#include <cygwin/pread.c>
+# define IFTODT(mode)          (((mode) & 0170000) >> 12)
+# define DTTOIF(dirtype)       ((dirtype) << 12)
+#endif /* __CYGWIN__ */
+
 /* Do not use the weird XPG version of basename */
 #undef basename
 
@@ -376,7 +384,7 @@ static struct filesystem_entry *recursive_add_host_directory(
    the following macros use it if available or use a hacky workaround...
  */
 
-#ifdef __GNUC__
+#if defined __GNUC__ && !defined __CYGWIN__
 #define SCANF_PREFIX "a"
 #define SCANF_STRING(s) (&s)
 #define GETCWD_SIZE 0
@@ -459,6 +467,14 @@ static int interpret_table_entry(struct filesystem_entry *root, char *line)
 	}
 	entry = find_filesystem_entry(root, name, mode);
 	if (entry && !(count > 0 && (type == 'c' || type == 'b'))) {
+		/* Check the type */
+		if ((mode & S_IFMT) != (entry->sb.st_mode & S_IFMT)) {
+			error_msg ("skipping device_table entry '%s': type mismatch!", name);
+			free(name);
+			free(hostpath);
+			return 1;
+		}
+
 		/* Ok, we just need to fixup the existing entry
 		 * and we will be all done... */
 		entry->sb.st_uid = uid;
@@ -468,11 +484,21 @@ static int interpret_table_entry(struct filesystem_entry *root, char *line)
 			entry->sb.st_rdev = makedev(major, minor);
 		}
 	} else {
+		if (type == 'f' || type == 'l') {
+			error_msg ("skipping device_table entry '%s': file does not exist!", name);
+			free(name);
+			free(hostpath);
+			return 1;
+		}
 		/* If parent is NULL (happens with device table entries),
 		 * try and find our parent now) */
 		tmp = strdup(name);
 		dir = dirname(tmp);
-		parent = find_filesystem_entry(root, dir, S_IFDIR);
+		if (!strcmp(dir, "/")) {
+			parent = root;
+		} else {
+			parent = find_filesystem_entry(root, dir, S_IFDIR);
+		}
 		free(tmp);
 		if (parent == NULL) {
 			errmsg ("skipping device_table entry '%s': no parent directory!", name);
@@ -486,6 +512,7 @@ static int interpret_table_entry(struct filesystem_entry *root, char *line)
 				add_host_filesystem_entry(name, hostpath, uid, gid, mode, 0, parent);
 				break;
 			case 'f':
+			case 'l':
 				add_host_filesystem_entry(name, hostpath, uid, gid, mode, 0, parent);
 				break;
 			case 'p':
