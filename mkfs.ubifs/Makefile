@@ -6,7 +6,13 @@ ALL_SOURCES=*.[ch] hashtable/*.[ch]
 
 TARGETS = mkfs.ubifs
 
-LDLIBS_mkfs.ubifs = -lz -llzo2 -lm -luuid -L$(BUILDDIR)/../ubi-utils/ -lubi
+ifeq ($(WITHOUT_LZO), 1)
+  CPPFLAGS += -DWITHOUT_LZO
+else
+  LZOLDLIBS = -llzo2
+endif
+
+LDLIBS_mkfs.ubifs = -lz $(LZOLDLIBS) -lm -luuid -L$(BUILDDIR)/../ubi-utils/ -lubi
 LDLIBS_mkfs.ubifs += -L$(BUILDDIR)/../lib -lmtd
 LDLIBS_mkfs.ubifs += $(ZLIBLDFLAGS) $(LZOLDFLAGS)
 
