@@ -39,7 +39,6 @@
 #include <zlib.h>
 #undef crc32
 #include <stdio.h>
-#include <asm/types.h>
 #include <linux/jffs2.h>
 #include "common.h"
 #include "compr.h"

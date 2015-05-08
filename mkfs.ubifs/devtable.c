@@ -134,6 +134,7 @@ static int interpret_table_entry(const char *line)
 	unsigned int mode = 0755, uid = 0, gid = 0, major = 0, minor = 0;
 	unsigned int start = 0, increment = 0, count = 0;
 
+	buf[1023] = 0;
 	if (sscanf(line, "%1023s %c %o %u %u %u %u %u %u %u",
 		   buf, &type, &mode, &uid, &gid, &major, &minor,
 		   &start, &increment, &count) < 0)
@@ -144,8 +145,8 @@ static int interpret_table_entry(const char *line)
 		buf, type, mode, uid, gid, major, minor, start,
 		increment, count);
 
-	len = strnlen(buf, 1024);
-	if (len == 1024)
+	len = strlen(buf);
+	if (len == 1023)
 		return err_msg("too long path");
 
 	if (!strcmp(buf, "/"))
