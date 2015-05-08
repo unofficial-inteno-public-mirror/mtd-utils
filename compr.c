@@ -520,6 +520,9 @@ int jffs2_compressors_init(void)
 #ifdef CONFIG_JFFS2_LZO
 	jffs2_lzo_init();
 #endif
+#ifdef CONFIG_JFFS2_LZMA
+        jffs2_lzma_init();
+#endif
 	return 0;
 }
 
@@ -533,6 +536,9 @@ int jffs2_compressors_exit(void)
 #endif
 #ifdef CONFIG_JFFS2_LZO
 	jffs2_lzo_exit();
+#endif
+#ifdef CONFIG_JFFS2_LZMA
+        jffs2_lzma_exit();
 #endif
 	return 0;
 }

@@ -1,7 +1,7 @@
 
 # -*- sh -*-
 
-CPPFLAGS += -I./include $(ZLIBCPPFLAGS) $(LZOCPPFLAGS)
+CPPFLAGS += -I./include $(ZLIBCPPFLAGS) $(LZOCPPFLAGS) -I./include/linux/lzma
 
 ifeq ($(WITHOUT_XATTR), 1)
   CPPFLAGS += -DWITHOUT_XATTR
@@ -59,7 +59,9 @@ $(SYMLINKS):
 	ln -sf ../fs/jffs2/$@ $@
 
 $(BUILDDIR)/mkfs.jffs2: $(addprefix $(BUILDDIR)/,\
-	compr_rtime.o mkfs.jffs2.o compr_zlib.o compr_lzo.o \
+	compr_rtime.o mkfs.jffs2.o compr_zlib.o \
+	$(if $(WITHOUT_LZO),,compr_lzo.o) \
+	compr_lzma.o lzma/LzFind.o lzma/LzmaEnc.o lzma/LzmaDec.o \
 	compr.o rbtree.o)
 LDFLAGS_mkfs.jffs2 = $(ZLIBLDFLAGS) $(LZOLDFLAGS)
 LDLIBS_mkfs.jffs2  = -lz $(LZOLDLIBS)

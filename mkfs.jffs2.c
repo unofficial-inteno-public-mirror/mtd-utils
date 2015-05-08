@@ -1685,11 +1685,11 @@ int main(int argc, char **argv)
 						  }
 						  erase_block_size *= units;
 
-						  /* If it's less than 8KiB, they're not allowed */
-						  if (erase_block_size < 0x2000) {
-							  fprintf(stderr, "Erase size 0x%x too small. Increasing to 8KiB minimum\n",
+						  /* If it's less than 4KiB, they're not allowed */
+						  if (erase_block_size < 0x1000) {
+							  fprintf(stderr, "Erase size 0x%x too small. Increasing to 4KiB minimum\n",
 									  erase_block_size);
-							  erase_block_size = 0x2000;
+							  erase_block_size = 0x1000;
 						  }
 						  break;
 					  }
