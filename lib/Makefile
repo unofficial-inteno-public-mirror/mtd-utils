@@ -7,7 +7,7 @@ SUBDIRS =
 # CFLAGS += -Werror
 CPPFLAGS += -I../include
 LIBS = libmtd
-TARGETS = libmtd.a
+override TARGETS = libmtd.a
 
 include ../common.mk
 
