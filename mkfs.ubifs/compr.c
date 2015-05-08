@@ -127,6 +127,99 @@ static inline int lzo_init(void) { return 0; }
 static inline void lzo_fini(void) { }
 #endif
 
+#ifndef WITHOUT_LZMA
+
+#include <linux/lzma.h>
+
+#define DEBUGPR printf
+
+struct lzma_ctx {
+	CLzmaEncHandle *p;
+	SizeT propsSize;
+	Byte propsEncoded[LZMA_PROPS_SIZE];
+} lzma_ctx;
+
+static void lzma_free_workspace(struct lzma_ctx *ctx)
+{
+	LzmaEnc_Destroy(ctx->p, &lzma_alloc, &lzma_alloc);
+}
+
+static int lzma_alloc_workspace(struct lzma_ctx *ctx, CLzmaEncProps *props)
+{
+	SRes res;
+
+	ctx->p = (CLzmaEncHandle *)LzmaEnc_Create(&lzma_alloc);
+	if (ctx->p == NULL)
+		return -1;
+
+	res = LzmaEnc_SetProps(ctx->p, props);
+	if (res != SZ_OK) {
+		DEBUGPR("LzmaEnc_SetProps: res=%d\n", res);
+		lzma_free_workspace(ctx);
+		return -1;
+	}
+
+	ctx->propsSize = sizeof(ctx->propsEncoded);
+	res = LzmaEnc_WriteProperties(ctx->p, ctx->propsEncoded, &ctx->propsSize);
+	if (res != SZ_OK) {
+		DEBUGPR("LzmaEnc_WriteProperties: res=%d\n", res);
+		lzma_free_workspace(ctx);
+		return -1;
+	}
+
+	return 0;
+}
+
+static int lzma_init(void)
+{
+	struct lzma_ctx *ctx = &lzma_ctx;
+	int ret;
+	CLzmaEncProps props;
+	LzmaEncProps_Init(&props);
+
+	props.dictSize = LZMA_BEST_DICT(0x2000);
+	props.level = LZMA_BEST_LEVEL;
+	props.lc = LZMA_BEST_LC;
+	props.lp = LZMA_BEST_LP;
+	props.pb = LZMA_BEST_PB;
+	props.fb = LZMA_BEST_FB;
+
+	ret = lzma_alloc_workspace(ctx, &props);
+	return ret;
+}
+
+static void lzma_fini(void)
+{
+	struct lzma_ctx *ctx = &lzma_ctx;
+
+	lzma_free_workspace(ctx);
+}
+
+static int lzma_compress(void *in_buf, size_t in_len, void *out_buf,
+			 size_t *out_len)
+{
+	struct lzma_ctx *ctx = &lzma_ctx;
+	SizeT compress_size = (SizeT)(*out_len);
+	int ret;
+
+	ret = LzmaEnc_MemEncode(ctx->p, out_buf, &compress_size, in_buf, in_len,
+				1, NULL, &lzma_alloc, &lzma_alloc);
+	if (ret != SZ_OK) {
+		DEBUGPR("LzmaEnc_MemEncode: ret=%d\n", ret);
+		return -1;
+	}
+
+	*out_len = (unsigned int)compress_size;
+	return 0;
+}
+
+#else
+static inline int lzma_init(void) { return 0; }
+static inline void lzma_fini(void) { }
+static inline int lzma_compress(void *in_buf, size_t in_len, void *out_buf,
+				size_t *out_len) { return -1; }
+#endif
+
 static int no_compress(void *in_buf, size_t in_len, void *out_buf,
 		       size_t *out_len)
 {
@@ -202,6 +295,9 @@ int compress_data(void *in_buf, size_t in_len, void *out_buf, size_t *out_len,
 		case MKFS_UBIFS_COMPR_ZLIB:
 			ret = zlib_deflate(in_buf, in_len, out_buf, out_len);
 			break;
+		case MKFS_UBIFS_COMPR_LZMA:
+			ret = lzma_compress(in_buf, in_len, out_buf, out_len);
+			break;
 		case MKFS_UBIFS_COMPR_NONE:
 			ret = 1;
 			break;
@@ -230,8 +326,14 @@ int init_compression(void)
 	if (!zlib_buf)
 		goto err_lzo;
 
+	ret = lzma_init();
+	if (ret)
+		goto err_zlib;
+
 	return 0;
 
+err_zlib:
+	free(zlib_buf);
 err_lzo:
 	lzo_fini();
 err:
@@ -240,6 +342,7 @@ err:
 
 void destroy_compression(void)
 {
+	lzma_fini();
 	free(zlib_buf);
 	lzo_fini();
 	if (errcnt)

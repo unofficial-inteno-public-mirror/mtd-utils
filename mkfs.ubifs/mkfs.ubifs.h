@@ -77,6 +77,9 @@
 #if MKFS_UBIFS_COMPR_ZLIB != UBIFS_COMPR_ZLIB
 #error MKFS_UBIFS_COMPR_ZLIB != UBIFS_COMPR_ZLIB
 #endif
+#if MKFS_UBIFS_COMPR_LZMA != UBIFS_COMPR_LZMA
+#error MKFS_UBIFS_COMPR_LZMA != UBIFS_COMPR_LZMA
+#endif
 
 extern int verbose;
 extern int debug_level;

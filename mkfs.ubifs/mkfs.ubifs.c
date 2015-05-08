@@ -98,6 +98,9 @@ struct ubifs_info info_;
 static struct ubifs_info *c = &info_;
 static libubi_t ubi;
 
+static int force_compr_set;
+static int force_compr;
+
 /* Debug levels are: 0 (none), 1 (statistics), 2 (files) ,3 (more details) */
 int debug_level;
 int verbose;
@@ -132,7 +135,7 @@ static struct inum_mapping **hash_table;
 /* Inode creation sequence number */
 static unsigned long long creat_sqnum;
 
-static const char *optstring = "d:r:m:o:D:h?vVe:c:g:f:Fp:k:x:X:j:R:l:j:UQq";
+static const char *optstring = "d:r:m:o:D:h?vVe:c:g:f:Fp:k:x:X:y:j:R:l:j:UQq";
 
 static const struct option longopts[] = {
 	{"root",               1, NULL, 'r'},
@@ -149,6 +152,7 @@ static const struct option longopts[] = {
 	{"reserved",           1, NULL, 'R'},
 	{"compr",              1, NULL, 'x'},
 	{"favor-percent",      1, NULL, 'X'},
+	{"force-compr",        1, NULL, 'y'},
 	{"fanout",             1, NULL, 'f'},
 	{"space-fixup",        0, NULL, 'F'},
 	{"keyhash",            1, NULL, 'k'},
@@ -178,11 +182,13 @@ static const char *helptext =
 "-o, --output=FILE        output to FILE\n"
 "-j, --jrn-size=SIZE      journal size\n"
 "-R, --reserved=SIZE      how much space should be reserved for the super-user\n"
-"-x, --compr=TYPE         compression type - \"lzo\", \"favor_lzo\", \"zlib\" or\n"
-"                         \"none\" (default: \"lzo\")\n"
+"-x, --compr=TYPE         default compression type - \"lzo\", \"favor_lzo\",\n"
+"                         \"zlib\", \"lzma\" or \"none\" (default: \"lzo\")\n"
 "-X, --favor-percent      may only be used with favor LZO compression and defines\n"
 "                         how many percent better zlib should compress to make\n"
 "                         mkfs.ubifs use zlib instead of LZO (default 20%)\n"
+"-y, --force-compr=TYPE   force to build the fs with different compression -\n"
+"                         \"lzo\", \"zlib\", \"lzma\" or \"none\"\n"
 "-f, --fanout=NUM         fanout NUM (default: 8)\n"
 "-F, --space-fixup        file-system free space has to be fixed up on first mount\n"
 "                         (requires kernel version 3.0 or greater)\n"
@@ -530,6 +536,43 @@ static int open_ubi(const char *node)
 	return 0;
 }
 
+static const char *get_compr_str(int compr)
+{
+	switch (compr) {
+	case UBIFS_COMPR_NONE:
+		return "none";
+	case UBIFS_COMPR_LZO:
+		return "lzo";
+	case UBIFS_COMPR_ZLIB:
+		return "zlib";
+	case UBIFS_COMPR_LZMA:
+		return "lzma";
+	}
+
+	return "unknown";
+}
+
+static int get_compr_option(char *opt, int *compr_type, int *favor_lzo)
+{
+	*compr_type = UBIFS_COMPR_LZO;
+
+	if (favor_lzo)
+		*favor_lzo = 0;
+
+	if (favor_lzo && strcmp(opt, "favor_lzo") == 0)
+		*favor_lzo = 1;
+	else if (strcmp(opt, "none") == 0)
+		*compr_type = UBIFS_COMPR_NONE;
+	else if (strcmp(opt, "zlib") == 0)
+		*compr_type = UBIFS_COMPR_ZLIB;
+	else if (strcmp(opt, "lzma") == 0)
+		*compr_type = UBIFS_COMPR_LZMA;
+	else if (strcmp(opt, "lzo") != 0)
+		return -1;
+
+	return 0;
+}
+
 static int get_options(int argc, char**argv)
 {
 	int opt, i;
@@ -649,14 +692,10 @@ static int get_options(int argc, char**argv)
 				return err_msg("bad key hash");
 			break;
 		case 'x':
-			if (strcmp(optarg, "favor_lzo") == 0)
-				c->favor_lzo = 1;
-			else if (strcmp(optarg, "zlib") == 0)
-				c->default_compr = UBIFS_COMPR_ZLIB;
-			else if (strcmp(optarg, "none") == 0)
-				c->default_compr = UBIFS_COMPR_NONE;
-			else if (strcmp(optarg, "lzo") != 0)
-				return err_msg("bad compressor name");
+			if (get_compr_option(optarg, &c->default_compr,
+					     &c->favor_lzo))
+				return err_msg("bad compressor name '%s'",
+						optarg);
 			break;
 		case 'X':
 			c->favor_percent = strtol(optarg, &endp, 0);
@@ -664,6 +703,12 @@ static int get_options(int argc, char**argv)
 			    c->favor_percent <= 0 || c->favor_percent >= 100)
 				return err_msg("bad favor LZO percent '%s'",
 					       optarg);
+			break;
+		case 'y':
+			if (get_compr_option(optarg, &force_compr, NULL))
+				return err_msg("bad forced compressor name '%s'",
+						optarg);
+			force_compr_set = 1;
 			break;
 		case 'j':
 			c->max_bud_bytes = get_bytes(optarg);
@@ -749,6 +794,9 @@ static int get_options(int argc, char**argv)
 		c->min_io_size = 8;
 	c->rp_size = add_space_overhead(c->rp_size);
 
+	if (force_compr_set == 0)
+		force_compr = c->default_compr;
+
 	if (verbose) {
 		printf("mkfs.ubifs\n");
 		printf("\troot:         %s\n", root);
@@ -758,17 +806,10 @@ static int get_options(int argc, char**argv)
 		printf("\toutput:       %s\n", output);
 		printf("\tjrn_size:     %llu\n", c->max_bud_bytes);
 		printf("\treserved:     %llu\n", c->rp_size);
-		switch (c->default_compr) {
-		case UBIFS_COMPR_LZO:
-			printf("\tcompr:        lzo\n");
-			break;
-		case UBIFS_COMPR_ZLIB:
-			printf("\tcompr:        zlib\n");
-			break;
-		case UBIFS_COMPR_NONE:
-			printf("\tcompr:        none\n");
-			break;
-		}
+		printf("\tcompr:        %s\n", get_compr_str(c->default_compr));
+		if (force_compr_set)
+			printf("\tforced compr: %s\n",
+			       get_compr_str(force_compr));
 		printf("\tkeyhash:      %s\n", (c->key_hash == key_r5_hash) ?
 						"r5" : "test");
 		printf("\tfanout:       %d\n", c->fanout);
@@ -1353,7 +1394,7 @@ static int add_file(const char *path_name, struct stat *st, ino_t inum,
 			use_compr = UBIFS_COMPR_LZO;
 		else
 #endif
-			use_compr = c->default_compr;
+			use_compr = force_compr;
 		compr_type = compress_data(buf, bytes_read, &dn->data,
 					   &out_len, use_compr);
 		dn->compr_type = cpu_to_le16(compr_type);
