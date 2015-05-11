@@ -46,6 +46,7 @@ static int quiet;		/* true -- don't output progress */
 static int jffs2;		/* format for jffs2 usage */
 static int noskipbad;		/* do not skip bad blocks */
 static int unlock;		/* unlock sectors before erasing */
+static int broken_cfe;		/* ignore oob layout and just write the cleanmarker at the start */
 
 static struct jffs2_unknown_node cleanmarker;
 int target_endian = __BYTE_ORDER;
@@ -67,6 +68,7 @@ static void display_help (void)
 			"  -j, --jffs2       format the device for jffs2\n"
 			"  -N, --noskipbad   don't skip bad blocks\n"
 			"  -u, --unlock      unlock sectors before erasing\n"
+			"  -b, --broken      don't respect oob layout, needed for some Broadcom cfe\n"
 			"  -q, --quiet       do not display progress messages\n"
 			"      --silent      same as --quiet\n"
 			"      --help        display this help and exit\n"
@@ -105,7 +107,7 @@ int main(int argc, char *argv[])
 	 */
 	for (;;) {
 		int option_index = 0;
-		static const char *short_options = "jNqu";
+		static const char *short_options = "jNqub";
 		static const struct option long_options[] = {
 			{"help", no_argument, 0, 0},
 			{"version", no_argument, 0, 0},
@@ -114,6 +116,7 @@ int main(int argc, char *argv[])
 			{"quiet", no_argument, 0, 'q'},
 			{"silent", no_argument, 0, 'q'},
 			{"unlock", no_argument, 0, 'u'},
+			{"broken", no_argument, 0, 'b'},
 
 			{0, 0, 0, 0},
 		};
@@ -145,6 +148,9 @@ int main(int argc, char *argv[])
 			break;
 		case 'u':
 			unlock = 1;
+			break;
+		case 'b':
+			broken_cfe = 1;
 			break;
 		case '?':
 			error = 1;
@@ -276,7 +282,15 @@ int main(int argc, char *argv[])
 
 		/* write cleanmarker */
 		if (isNAND) {
-			if (mtd_write_oob(mtd_desc, &mtd, fd, (uint64_t)offset + clmpos, clmlen, &cleanmarker) != 0) {
+			uint64_t oob_start, oob_length;
+			if (broken_cfe) {
+				oob_start = (uint64_t)offset;
+				oob_length = 8;
+			} else {
+				oob_start = (uint64_t)offset + clmpos;
+				oob_length = clmlen;
+			}
+			if (mtd_write_oob(mtd_desc, &mtd, fd, oob_start, oob_length, &cleanmarker) != 0) {
 				sys_errmsg("%s: MTD writeoob failure", mtd_device);
 				continue;
 			}
