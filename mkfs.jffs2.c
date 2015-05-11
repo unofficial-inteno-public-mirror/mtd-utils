@@ -499,10 +499,10 @@ static int interpret_table_entry(struct filesystem_entry *root, char *line)
 					unsigned long i;
 					char *dname, *hpath;
 
-					for (i = start; i < (start + count); i++) {
+					for (i = start; i < count; i++) {
 						xasprintf(&dname, "%s%lu", name, i);
 						xasprintf(&hpath, "%s/%s%lu", rootdir, name, i);
-						rdev = makedev(major, minor + (i - start) * increment);
+						rdev = makedev(major, minor + (i * increment - start));
 						add_host_filesystem_entry(dname, hpath, uid, gid,
 								mode, rdev, parent);
 						free(dname);
@@ -706,7 +706,7 @@ static void write_dirent(struct filesystem_entry *e)
 	char *name = e->name;
 	struct jffs2_raw_dirent rd;
 	struct stat *statbuf = &(e->sb);
-	static uint32_t version = 0;
+	static uint32_t version = 1;
 
 	memset(&rd, 0, sizeof(rd));
 
