@@ -399,6 +399,14 @@ static int eb_write(struct mtd_dev_info *mtd, int fd,
 	if (data_len == 0 && !write_clm)
 		return 0;
 
+	ret = mtd_is_bad(mtd, fd, eb);
+	if (ret > 0) {
+		if (args.verbose > 0)
+			printf("Skipping write of bad block at 0x%08lx\n",
+				eb_addr);
+		return ret;
+	}
+
 	page_addr = 0;
 	while ((page_addr < data_len) || write_clm)
 	{
@@ -424,8 +432,7 @@ static int eb_write(struct mtd_dev_info *mtd, int fd,
 			sys_errmsg("Write page failed at 0x%08lx",
 				eb_addr + page_addr);
 			eb_erase(mtd, fd, eb_addr);
-			if (data_len % mtd->eb_size == 0)
-				mtd_mark_bad(mtd, fd, eb);
+			mtd_mark_bad(mtd, fd, eb);
 			break;
 		}
 
