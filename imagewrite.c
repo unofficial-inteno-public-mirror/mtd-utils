@@ -315,7 +315,7 @@ static long eb_gen_data(struct mtd_dev_info *mtd, int ifd,
 			crc = mtd_crc32(UBI_CRC32_INIT, vid_hdr, UBI_VID_HDR_SIZE_CRC);
 			vid_hdr->hdr_crc = cpu_to_be32(crc);
 
-		} else if (blk_no < (args.vol_lebs + UBI_LAYOUT_VOLUME_EBS)) {
+		} else if (*data_left > 0) {
 
 			/* Volume data LEB */
 			memset(vid_hdr, 0, UBI_VID_HDR_SIZE);
@@ -352,7 +352,7 @@ static long eb_gen_data(struct mtd_dev_info *mtd, int ifd,
 			}
 			data_len = (void *)vtbl_rec - (void *)block_buf;
 
-		} else if (blk_no < (args.vol_lebs + UBI_LAYOUT_VOLUME_EBS)) {
+		} else if (*data_left > 0) {
 
 			/* Volume data */
 			i = mtd->eb_size - data_ofs;
