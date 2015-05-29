@@ -76,7 +76,7 @@ static libmtd_t mtd_desc;
 "  -N, --vol-name=st Name of UBI volume (mandatory if -u and INPUTFILE used)\n" \
 "  -s, --start=N     First eraseblock to erase/write\n" \
 "  -S, --vol-lebs=N  Number of LEB's for UBI volume, if N is negative, then\n" \
-"                    (all+N-2) blocks are used (default: all-22)\n" \
+"                    (<data_size>-N) blocks are used (default: <data_size>)\n" \
 "  -u, --ubi         Format as UBI device\n" \
 "  -q, --quiet       Don't display progress messages\n" \
 "  -v, --verbose     Display more progress messages\n" \
@@ -542,25 +542,24 @@ int main(int argc, char *argv[])
 		unsigned long leb_size;
 		long tot_lebs;
 		long vol_lebs;
+		long img_lebs;
 
 		leb_size = mtd.eb_size - (mtd.min_io_size * 2);
+		img_lebs = (image_size + leb_size -1) / leb_size;
 		tot_lebs = (end - start) / mtd.eb_size - UBI_LAYOUT_VOLUME_EBS;
 
 		vol_lebs = (long)args.vol_lebs;
 		if (vol_lebs == 0)
-			vol_lebs = tot_lebs - 20;  /* For bad block handling */
+			vol_lebs = img_lebs;
 		else if (vol_lebs < 0)
-			vol_lebs = tot_lebs + args.vol_lebs;
-		else
-			vol_lebs = args.vol_lebs;
+			vol_lebs = img_lebs - vol_lebs;
 
 		if (vol_lebs < 0 || vol_lebs > tot_lebs) {
 			errmsg("volume LEBs doesn't fit into allocated blocks");
 			goto closeall;
 		}
 
-
-		if (image_size > (vol_lebs * leb_size)) {
+		if (img_lebs > vol_lebs) {
 			errmsg("image file does not fit into allocated LEBs");
 			goto closeall;
 		}
