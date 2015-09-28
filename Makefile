@@ -80,7 +80,7 @@ $(BUILDDIR)/include/version.h: $(BUILDDIR)/include/version.h.tmp
 	$(Q)cmp -s $@ $@.tmp && rm -f $@.tmp || mv $@.tmp $@
 $(BUILDDIR)/include/version.h.tmp:
 	${Q}mkdir -p $(dir $@)
-	$(Q)echo '#define VERSION "$(VERSION)"' > $@
+	$(Q)echo '#define VERSION "$(VERSION)-inteno-$(shell  git log --pretty=format:%h -1)"' > $@
 
 #
 # Utils in top level
