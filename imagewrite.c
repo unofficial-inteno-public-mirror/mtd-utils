@@ -52,8 +52,11 @@ static struct args {
 	unsigned long vol_id;
 	unsigned long vol_lebs;
 	int std_in;
+	int force;
 	int clm;
 	int ubi;
+	int oob;
+	int mark_bad;
 	int verbose;
 	const char *vol_name;
 	const char *mtd_device;
@@ -69,12 +72,15 @@ static libmtd_t mtd_desc;
 "\n" \
 "  -b, --blocks=N    Number of eraseblocks to erase/write (default: to end)\n" \
 "  -c, --clm         Write JFFS2 clean markers\n" \
+"  -d, --mark-bad    Mark blocks as bad after erase (not easily reversible!)\n" \
 "  -i. --stdin       Read input data from STDIN\n" \
+"  -f, --force       Force erase/write of bad blocks (careful now!)\n" \
 "  -k, --skip=N      Offset into input file\n" \
 "  -l, --length=N    Length of data to write (default: to end of input file)\n" \
 "  -n, --vol-id=N    ID of UBI volume (default: 0)\n" \
 "  -N, --vol-name=st Name of UBI volume (mandatory if -u and INPUTFILE used)\n" \
-"  -s, --start=N     First eraseblock to erase/write\n" \
+"  -o, --oob         INPUTFILE contains OOB data too\n" \
+"  -s, --start=N     First eraseblock to erase/write (default: first)\n" \
 "  -S, --vol-lebs=N  Number of LEB's for UBI volume, if N is negative, then\n" \
 "                    (<data_size>-N) blocks are used (default: <data_size>)\n" \
 "  -u, --ubi         Format as UBI device\n" \
@@ -114,16 +120,19 @@ static void display_version(void)
 
 static void process_options(int argc, char * const argv[])
 {
-	static const char short_options[] = "b:chik:l:n:N:qs:S:uvV";
+	static const char short_options[] = "b:dchifk:l:n:N:oqs:S:uvV";
 	static const struct option long_options[] = {
 		{"blocks", required_argument, 0, 'b'},
 		{"clm", no_argument, 0, 'c'},
+		{"mark-bad", no_argument, 0, 'd'},
 		{"help", no_argument, 0, 'h'},
 		{"stdin", no_argument, 0, 'i'},
+		{"force", no_argument, 0, 'f'},
 		{"skip", required_argument, 0, 'k'},
 		{"length", required_argument, 0, 'l'},
 		{"vol-id", required_argument, 0, 'n'},
 		{"vol-name", required_argument, 0, 'N'},
+		{"oob", no_argument, 0, 'o'},
 		{"quiet", no_argument, 0, 'q'},
 		{"start", required_argument, 0, 's'},
 		{"vol-lebs", required_argument, 0, 'S'},
@@ -152,11 +161,17 @@ static void process_options(int argc, char * const argv[])
 			case 'c':
 				args.clm = 1;
 				break;
+			case 'd':
+				args.mark_bad = 1;
+				break;
 			case 'h':
 				display_help(EXIT_SUCCESS);
 				break;
 			case 'i':
 				args.std_in = 1;
+				break;
+			case 'f':
+				args.force = 1;
 				break;
 			case 'k':
 				args.skip = simple_strtoul(optarg, &err);
@@ -169,6 +184,9 @@ static void process_options(int argc, char * const argv[])
 				break;
 			case 'N':
 				args.vol_name = optarg;
+				break;
+			case 'o':
+				args.oob = 1;
 				break;
 			case 'q':
 				args.verbose = 0;
@@ -227,6 +245,12 @@ static int eb_erase(struct mtd_dev_info *mtd, int fd, unsigned long eb_addr)
 
 	eb = eb_addr / mtd->eb_size;
 	ret = mtd_is_bad(mtd, fd, eb);
+	if (args.force && ret > 0) {
+		if (args.verbose > 0)
+			printf("Forced to erase bad block at 0x%08lx\n",
+				eb_addr);
+		ret = 0;
+	}
 	if (ret > 0) {
 		if (args.verbose > 0)
 			printf("Skipping erase of bad block at 0x%08lx\n",
@@ -237,6 +261,11 @@ static int eb_erase(struct mtd_dev_info *mtd, int fd, unsigned long eb_addr)
 		ret = mtd_erase(mtd_desc, mtd, fd, eb);
 		if (ret)
 			sys_errmsg("Erase block failed at 0x%08lx", eb_addr);
+	}
+
+	if (!ret && args.mark_bad) {
+		printf("Marking block bad at 0x%08lx\n", eb_addr);
+		mtd_mark_bad(mtd, fd, eb);
 	}
 
 	return ret;
@@ -274,10 +303,13 @@ static long eb_gen_data(struct mtd_dev_info *mtd, int ifd,
 {
 	static unsigned long blk_no = 0;
 	static uint32_t image_seq = 0;
+	unsigned long extra;
 	uint32_t crc;
 	long data_len;
 
-	memset(block_buf, 0xff, mtd->eb_size);
+	extra = args.oob ?
+	        mtd->oob_size * (mtd->eb_size / mtd->min_io_size) : 0;
+	memset(block_buf, 0xff, mtd->eb_size + extra);
 
 	if (args.ubi) {
 		struct ubi_ec_hdr *ec_hdr;
@@ -371,8 +403,8 @@ static long eb_gen_data(struct mtd_dev_info *mtd, int ifd,
 	} else {
 
 		/* Raw data write, no UBI headers */
-		data_len = (*data_left > mtd->eb_size) ?
-			   mtd->eb_size : *data_left;
+		data_len = (*data_left > (mtd->eb_size + extra)) ?
+			   (mtd->eb_size + extra) : *data_left;
 		data_len = data_read(ifd, block_buf, data_len);
 		if (data_len < 0)
 			return -1;
@@ -394,16 +426,24 @@ static int eb_write(struct mtd_dev_info *mtd, int fd,
 		0x19, 0x85, 0x20, 0x03, 0x00, 0x00, 0x00, 0x08
 #endif
 	};
-	unsigned long write_len;
-	unsigned long page_addr, byte;
+	unsigned long write_len, oob_len;
+	unsigned long page_addr, data_offs, byte;
 	unsigned long eb = eb_addr / mtd->eb_size;
+	unsigned char *oob_data;
 	int write_clm = args.clm;
+	uint8_t mode = args.oob ? MTD_OPS_RAW : MTD_OPS_AUTO_OOB;
 	int ret = 0;
 
 	if (data_len == 0 && !write_clm)
 		return 0;
 
 	ret = mtd_is_bad(mtd, fd, eb);
+	if (args.force && ret > 0) {
+		if (args.verbose > 0)
+			printf("Forced to write bad block at 0x%08lx\n",
+				eb_addr);
+		ret = 0;
+	}
 	if (ret > 0) {
 		if (args.verbose > 0)
 			printf("Skipping write of bad block at 0x%08lx\n",
@@ -412,25 +452,38 @@ static int eb_write(struct mtd_dev_info *mtd, int fd,
 	}
 
 	page_addr = 0;
-	while ((page_addr < data_len) || write_clm)
+	data_offs = 0;
+	while ((data_offs < data_len) || write_clm)
 	{
 		write_len = 0;
 		for (byte = 0; byte < mtd->min_io_size; ++byte) {
-			if (data[page_addr + byte] != 0xFF) {
+			if (data[data_offs + byte] != 0xFF) {
 				write_len = mtd->min_io_size;
 				break;
 			}
+		}
+
+		if (args.oob) {
+			oob_data = &data[data_offs + mtd->min_io_size];
+			oob_len = mtd->oob_size;
+		} else if (write_clm) {
+			oob_data = clean_marker;
+			oob_len = sizeof(clean_marker);
+			write_clm = 0;  /* Clean marker on first page only */
+		} else {
+			oob_data = NULL;
+			oob_len = 0;
 		}
 
 		ret = mtd_write(
 			mtd_desc, mtd, fd,
 			eb,
 			page_addr,
-			write_len ? &data[page_addr] : NULL,
+			write_len ? &data[data_offs] : NULL,
 			write_len,
-			write_clm ? clean_marker : NULL,
-			write_clm ? sizeof(clean_marker) : 0,
-			MTD_OPS_AUTO_OOB
+			oob_data,
+			oob_len,
+			mode
 		);
 		if (ret) {
 			sys_errmsg("Write page failed at 0x%08lx",
@@ -440,8 +493,10 @@ static int eb_write(struct mtd_dev_info *mtd, int fd,
 			break;
 		}
 
-		write_clm = 0;  /* Clean marker on first page only */
 		page_addr += mtd->min_io_size;
+		data_offs += mtd->min_io_size;
+		if (args.oob)
+			data_offs += mtd->oob_size;
 	}
 
 	return ret;
@@ -457,6 +512,7 @@ int main(int argc, char *argv[])
 	unsigned char *block_buf = NULL;
 	unsigned long start;
 	unsigned long end;
+	unsigned long extra;
 	unsigned long eb_addr;
 	unsigned long data_left;
 	long data_len;
@@ -469,6 +525,12 @@ int main(int argc, char *argv[])
 
 	if (args.ubi && (args.img_file || args.std_in) && !args.vol_name)
 		errmsg_die("--ubi and input data require --vol-name");
+
+	if (args.oob && (args.ubi || args.clm))
+		errmsg_die("can't have --oob together with --ubi or --clm");
+
+	if (args.oob && !(args.img_file || args.std_in))
+		errmsg_die("--oob require --stdin or input file");
 
 	if ((fd = open(args.mtd_device, O_RDWR)) == -1)
 		sys_errmsg_die("%s", args.mtd_device);
@@ -490,7 +552,9 @@ int main(int argc, char *argv[])
 		errmsg_die("block count out of range");
 
 	if (args.img_file || args.std_in || args.ubi) {
-		block_buf = xmalloc(mtd.eb_size);
+		extra = args.oob ?
+		        mtd.oob_size * (mtd.eb_size / mtd.min_io_size) : 0;
+		block_buf = xmalloc(mtd.eb_size + extra);
 		if (!block_buf) {
 			errmsg("failed to allocate memory");
 			goto closeall;
@@ -575,7 +639,9 @@ int main(int argc, char *argv[])
 			goto closeall;
 		}
 	} else {
-		if (image_size > (end - start)) {
+		extra = args.oob ?
+		        (end - start) / mtd.min_io_size * mtd.oob_size : 0;
+		if (image_size > ((end - start) + extra)) {
 			errmsg("image file does not fit into allocated blocks");
 			goto closeall;
 		}
