@@ -388,7 +388,11 @@ static int eb_write(struct mtd_dev_info *mtd, int fd,
 		    unsigned char *data)
 {
 	static unsigned char clean_marker[] = {
+#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+		0x85, 0x19, 0x03, 0x20, 0x08, 0x00, 0x00, 0x00
+#else
 		0x19, 0x85, 0x20, 0x03, 0x00, 0x00, 0x00, 0x08
+#endif
 	};
 	unsigned long write_len;
 	unsigned long page_addr, byte;
