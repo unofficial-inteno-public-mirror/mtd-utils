@@ -47,36 +47,50 @@
 # define DEBUG(args)
 #endif
 
+#define STDOUTFD	1
+#define STDERRFD	2
+
 
 static const char doc[] = PROGRAM_NAME " version " VERSION
 " - a tool to extract the contents,\n"
-"i.e. the raw binary image data, from one UBI volume of an UBI image.\n";
+"i.e. the raw binary image data, from one UBI volume of an UBI image.\n"
+"The UBI image may come from the ubinize tool or may be a dump from a\n"
+"flash memory. If an output file is specified, the data blocks output\n"
+"will be sorted in logical block order.\n";
 
 static const char optionsstr[] =
-"-o, --output=<file name>  output file name\n"
+"-o, --output=<file name>  output file name (default: stdout)\n"
+"-s, --skip=<bytes>        start offset into input file (default: 0)\n"
+"-l, --length=<bytes>      number of bytes to read (default: to end)\n"
 "-p, --peb-size=<bytes>    size of the physical eraseblock of the flash\n"
 "                          this UBI image was created for in bytes,\n"
 "                          kilobytes (KiB), or megabytes (MiB)\n"
 "                          (mandatory parameter)\n"
 "-i, --vol-index=<index>   volume table index of volume to extract\n"
 "-n, --vol-name=<name>     name of volume to extract\n"
-"-s, --skip-bad-blocks     skip eraseblocks with broken headers when\n"
+"-b, --skip-bad-blocks     skip eraseblocks with broken headers when\n"
 "                          reading data\n"
-"-v, --verbose             be verbose\n"
+"-v, --verbose             be verbose (don't use without -o)\n"
 "-h, --help                print help message\n"
 "-V, --version             print program version";
 
 static const char usage[] =
-"Usage: " PROGRAM_NAME " [-o <file name>] [-p <bytes>] [-i <index>|-n <name>] [-s] ubi-file\n"
+"Usage: " PROGRAM_NAME " [OPTIONS] ubi-file\n"
 "Example: " PROGRAM_NAME " -o ubifs.img -p 128KiB -n root_fs ubi.img\n"
-"- extract contents of volume named 'root_fs' from 'ubi.img' to file 'ubifs.img'";
+"- extract contents of volume named 'root_fs' from 'ubi.img' to file 'ubifs.img'\n"
+"Example: " PROGRAM_NAME " -p 128KiB -i 1 -b -s 1024 -l 20971520 ubi.img\n"
+"- extract contents of volume with index 1 from 'ubi.img' starting at an offset\n"
+"  of 1KiB and using 20MiB of data, skiping bad blocks and writing output to\n"
+"  stdout";
 
 static const struct option long_options[] = {
 	{ .name = "output",          .has_arg = 1, .flag = NULL, .val = 'o' },
+	{ .name = "skip",            .has_arg = 1, .flag = NULL, .val = 's' },
+	{ .name = "length",          .has_arg = 1, .flag = NULL, .val = 'l' },
 	{ .name = "peb-size",        .has_arg = 1, .flag = NULL, .val = 'p' },
 	{ .name = "vol-index",       .has_arg = 1, .flag = NULL, .val = 'i' },
 	{ .name = "vol-name",        .has_arg = 1, .flag = NULL, .val = 'n' },
-	{ .name = "skip-bad-blocks", .has_arg = 0, .flag = NULL, .val = 's' },
+	{ .name = "skip-bad-blocks", .has_arg = 0, .flag = NULL, .val = 'b' },
 	{ .name = "verbose",         .has_arg = 0, .flag = NULL, .val = 'v' },
 	{ .name = "help",            .has_arg = 0, .flag = NULL, .val = 'h' },
 	{ .name = "version",         .has_arg = 0, .flag = NULL, .val = 'V' },
@@ -95,6 +109,8 @@ struct img_info {
 struct args {
 	const char *f_in;
 	const char *f_out;
+	int skip;
+	int length;
 	int peb_size;
 	int vol_index;
 	const char *vol_name;
@@ -114,13 +130,21 @@ static int parse_opt(int argc, char * const argv[])
 	int key;
 
 	for (;;) {
-		key = getopt_long(argc, argv, "o:p:i:n:svhV", long_options, NULL);
+		key = getopt_long(argc, argv, "o:s:l:p:i:n:bvhV", long_options, NULL);
 		if (key == -1)
 			break;
 
 		switch (key) {
 		case 'o':
 			args.f_out = optarg;
+			break;
+
+		case 's':
+			args.skip = atoi(optarg);
+			break;
+
+		case 'l':
+			args.length = atoi(optarg);
 			break;
 
 		case 'i':
@@ -140,7 +164,7 @@ static int parse_opt(int argc, char * const argv[])
 				return errmsg("bad physical eraseblock size: \"%s\"", optarg);
 			break;
 
-		case 's':
+		case 'b':
 			args.skip_bad = 1;
 			break;
 
@@ -175,14 +199,17 @@ static int parse_opt(int argc, char * const argv[])
 	if (args.peb_size < 0)
 		return errmsg("physical eraseblock size was not specified (use -h for help)");
 
+	if (args.skip < 0)
+		return errmsg("skip cannot be negative (use -h for help)");
+
+	if (args.length < 0 || (args.length % args.peb_size != 0))
+		return errmsg("length must be a multiple of peb-size (use -h for help)");
+
 	if (!index_set && !args.vol_name)
 		return errmsg("UBI volume not specified (use -h for help)");
 
 	if (index_set && args.vol_name)
 		return errmsg("UBI volume specified by both name and index (use -h for help)");
-
-	if (!args.f_out)
-		return errmsg("output file was not specified (use -h for help)");
 
 	return 0;
 }
@@ -251,7 +278,7 @@ static int read_headers(int fd, struct img_info *imi)
 static int read_ubi_info(int in_fd, struct img_info *imi)
 {
 	struct ubi_vtbl_record vtbl_rec;
-	off_t seek = 0;
+	off_t seek = args.skip;
 	unsigned vol_ix;
 	__be32 crc;
 
@@ -267,7 +294,7 @@ static int read_ubi_info(int in_fd, struct img_info *imi)
 			break;
 
 		seek += args.peb_size;
-		if (seek >= imi->size)
+		if (seek >= (imi->size + args.skip))
 			return errmsg("volume table EB not found");
 	}
 
@@ -329,7 +356,8 @@ static int extract_volume_data(int in_fd, int out_fd, struct img_info *imi)
 	if (!buf)
 		return sys_errmsg("failed to allocate buffer");
 
-	for (r_seek = 0; r_seek < imi->size; r_seek += args.peb_size) {
+	for (r_seek = args.skip;
+	     r_seek < (imi->size + args.skip); r_seek += args.peb_size) {
 
 		if (lseek(in_fd, r_seek, SEEK_SET) == -1) {
 			sys_errmsg("cannot seek input file");
@@ -351,10 +379,12 @@ static int extract_volume_data(int in_fd, int out_fd, struct img_info *imi)
 			goto err_mem;
 		}
 
-		w_seek = (off_t)(local_imi.lnum * data_size);
-		if (lseek(out_fd, w_seek, SEEK_SET) == -1) {
-			sys_errmsg("cannot seek output file");
-			goto err_mem;
+		if (out_fd > STDERRFD) {
+			w_seek = (off_t)(local_imi.lnum * data_size);
+			if (lseek(out_fd, w_seek, SEEK_SET) == -1) {
+				sys_errmsg("cannot seek output file");
+				goto err_mem;
+			}
 		}
 
 		if (write(out_fd, buf, data_size) != data_size) {
@@ -387,13 +417,17 @@ int main(int argc, char * const argv[])
 		return ret;
 	}
 
-	if (!st.st_size || (st.st_size % args.peb_size != 0)) {
+	if ((st.st_size <= (args.skip + args.length)) ||
+	    (!args.length && ((st.st_size - args.skip) % args.peb_size != 0))) {
 		errmsg("bad size of input file (%lu)", st.st_size);
 		return ret;
 	}
 
 	memset(&imi, 0, sizeof(imi));
-	imi.size = st.st_size;
+	if (args.length)
+		imi.size = args.length;
+	else
+		imi.size = st.st_size - args.skip;
 
 	in_fd = open(args.f_in, O_RDONLY);
 	if (in_fd < 0) {
@@ -413,18 +447,25 @@ int main(int argc, char * const argv[])
 	verbose(args.verbose, "VID offset:   %d", imi.vid_hdr_offset);
 	verbose(args.verbose, "data offset:  %d", imi.data_offset);
 
-	out_fd = open(args.f_out, O_CREAT | O_TRUNC | O_WRONLY,
-				  S_IWUSR | S_IRUSR | S_IRGRP | S_IWGRP | S_IROTH);
-	if (out_fd < 0) {
-		sys_errmsg("cannot open output file \"%s\"", args.f_out);
-		goto err_in;
+	if (args.f_out) {
+		out_fd = open(args.f_out, O_CREAT | O_TRUNC | O_WRONLY,
+					  S_IWUSR | S_IRUSR | S_IRGRP |
+					  S_IWGRP | S_IROTH);
+		if (out_fd < 0) {
+			sys_errmsg("cannot open output file \"%s\"", args.f_out);
+			goto err_in;
+		}
+	} else {
+		/* Output to stdout */
+		out_fd = STDOUTFD;
 	}
 
 	err = extract_volume_data(in_fd, out_fd, &imi);
 	if (!err)
 		ret = EXIT_SUCCESS;
 
-	close(out_fd);
+	if (out_fd > STDERRFD)
+		close(out_fd);
   err_in:
 	close(in_fd);
 
