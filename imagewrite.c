@@ -54,6 +54,7 @@ static struct args {
 	int std_in;
 	int clm;
 	int ubi;
+	int trail_ff;
 	int verbose;
 	const char *vol_name;
 	const char *mtd_device;
@@ -77,6 +78,8 @@ static libmtd_t mtd_desc;
 "  -s, --start=N     First eraseblock to erase/write\n" \
 "  -S, --vol-lebs=N  Number of LEB's for UBI volume, if N is negative, then\n" \
 "                    (<data_size>-N) blocks are used (default: <data_size>)\n" \
+"  -t, --trail-ff    Don't fail if image doesn't fit due to bad blocks if\n" \
+"                    excess data is all 0xff bytes\n" \
 "  -u, --ubi         Format as UBI device\n" \
 "  -q, --quiet       Don't display progress messages\n" \
 "  -v, --verbose     Display more progress messages\n" \
@@ -114,7 +117,7 @@ static void display_version(void)
 
 static void process_options(int argc, char * const argv[])
 {
-	static const char short_options[] = "b:chik:l:n:N:qs:S:uvV";
+	static const char short_options[] = "b:chik:l:n:N:qs:S:tuvV";
 	static const struct option long_options[] = {
 		{"blocks", required_argument, 0, 'b'},
 		{"clm", no_argument, 0, 'c'},
@@ -127,6 +130,7 @@ static void process_options(int argc, char * const argv[])
 		{"quiet", no_argument, 0, 'q'},
 		{"start", required_argument, 0, 's'},
 		{"vol-lebs", required_argument, 0, 'S'},
+		{"trail-ff", no_argument, 0, 't'},
 		{"ubi", no_argument, 0, 'u'},
 		{"verbose", no_argument, 0, 'v'},
 		{"version", no_argument, 0, 'V'},
@@ -178,6 +182,9 @@ static void process_options(int argc, char * const argv[])
 				break;
 			case 'S':
 				args.vol_lebs = simple_strtoul(optarg, &err);
+				break;
+			case 't':
+				args.trail_ff = 1;
 				break;
 			case 'u':
 				args.ubi = 1;
@@ -574,6 +581,11 @@ int main(int argc, char *argv[])
 			errmsg("volume name too long");
 			goto closeall;
 		}
+
+		if (args.trail_ff) {
+			errmsg("can't have --trail-ff with --ubi");
+			goto closeall;
+		}
 	} else {
 		if (image_size > (end - start)) {
 			errmsg("image file does not fit into allocated blocks");
@@ -624,6 +636,18 @@ int main(int argc, char *argv[])
 
 	if (!data_left || !image_size)
 		failed = 0;
+	else if (data_left && image_size && args.trail_ff) {
+		int i;
+		while (data_left) {
+			data_len = eb_gen_data(&mtd, ifd, block_buf, &data_left);
+			if (data_len < 0)
+				goto closeall;
+			for (i=0; i<data_len; ++i)
+				if (block_buf[i] != 0xFF)
+					goto closeall;
+		}
+		failed = 0;
+	}
 
 closeall:
 	close(ifd);
