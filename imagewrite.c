@@ -624,8 +624,10 @@ int main(int argc, char *argv[])
 				fflush(stdout);
 			}
 
-			if (eb_write(&mtd, fd, eb_addr, data_len, block_buf) == 0)
+			if (eb_write(&mtd, fd, eb_addr, data_len, block_buf) == 0) {
+				data_len = 0;
 				break;
+			}
 
 			eb_addr += mtd.eb_size;
 		}
@@ -634,7 +636,9 @@ int main(int argc, char *argv[])
 	if (args.verbose > 0)
 		printf("\n");
 
-	if (!data_left || !image_size)
+	if (data_len)
+		; /* Generate or write data failed */
+	else if (!data_left || !image_size)
 		failed = 0;
 	else if (data_left && image_size && args.trail_ff) {
 		int i;
