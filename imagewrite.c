@@ -608,6 +608,7 @@ int main(int argc, char *argv[])
 		printf("Writing blocks from 0x%08lx to 0x%08lx\n",
 			start, end);
 
+	failed = 2;
 	data_left = image_size ? image_size : (unsigned long)-1;
 	for (eb_addr = start; eb_addr < end; eb_addr += mtd.eb_size) {
 
@@ -656,11 +657,15 @@ int main(int argc, char *argv[])
 closeall:
 	close(ifd);
 	libmtd_close(mtd_desc);
-	free(block_buf);
+	if (block_buf)
+		free(block_buf);
 	close(fd);
 
-	if (failed)
-		errmsg_die("data only partially written due to error");
+	if (failed) {
+		if (failed > 1)
+			errmsg("data only partially written due to error");
+		return EXIT_FAILURE;
+	}
 
 	return EXIT_SUCCESS;
 }
