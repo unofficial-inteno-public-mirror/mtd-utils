@@ -49,7 +49,7 @@
 /*
  * stuff used for testing purposes only
  */
-
+typedef unsigned long u_long ;
 #ifdef	TEST
 #define DEB(x)
 #define DDB(x) x
@@ -61,7 +61,6 @@ struct timeval {
 };
 #define gettimeofday(x, dummy) { (x)->ticks = clock() ; }
 #define DIFF_T(a,b) (1+ 1000000*(a.ticks - b.ticks) / CLOCKS_PER_SEC )
-typedef unsigned long u_long ;
 typedef unsigned short u_short ;
 #else /* typically, unix systems */
 #include <sys/time.h>
